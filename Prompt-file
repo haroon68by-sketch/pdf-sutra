@@ -1,10 +1,71 @@
-Step 4 — Create the File Structure (30 min)
+# Deploying PDFSutra to Railway — Complete Phone Guide
 
-In the Codespaces terminal (tap Terminal menu → New Terminal), run these commands one block at a time. Copy-paste each block:
+From zero code to live app, step by step on your phone.
 
+---
 
-bash
-bash
+## Overview
+
+```
+Railway Project
+├── Service 1: PostgreSQL Database (Railway-managed)
+├── Service 2: Backend (FastAPI) — Dockerfile
+└── Service 3: Frontend (Next.js) — Dockerfile
+```
+
+You'll use **GitHub Codespaces** (works in mobile browser) as your code editor, then connect Railway to GitHub for auto-deploy.
+
+---
+
+## Step 1 — Create Accounts (10 min)
+
+### 1a. Create GitHub Account
+- Open `github.com` in your browser
+- Sign up (free)
+
+### 1b. Create Railway Account
+- Open `railway.com` in your browser
+- Click **Login** → **Login with GitHub**
+- Authorize Railway to access your GitHub
+
+### 1c. Railway Free Tier
+- Railway gives you **$5 free credit/month**
+- Enough for a small PostgreSQL + backend + frontend
+- No credit card needed to start
+
+---
+
+## Step 2 — Create the GitHub Repo (5 min)
+
+1. Go to `github.com` on your phone browser
+2. Tap the **+** icon (top right) → **New repository**
+3. Fill in:
+   - **Repository name:** `pdfsutra`
+   - **Description:** `Fast, free PDF tools`
+   - **Visibility:** **Public** (so Railway free tier works easily)
+   - **Check:** Add a README file
+4. Tap **Create repository**
+
+---
+
+## Step 3 — Open GitHub Codespaces (2 min)
+
+This gives you a full VS Code editor in your phone browser.
+
+1. Open your repo `github.com/YOUR_USERNAME/pdfsutra`
+2. Tap the green **Code** button
+3. Tap **Codespaces** tab
+4. Tap **Create codespace on main**
+5. Wait ~60 seconds for the dev environment to load
+6. You now have VS Code in your browser — a terminal, file explorer, and editor
+
+---
+
+## Step 4 — Create the File Structure (30 min)
+
+In the Codespaces terminal (tap **Terminal** menu → **New Terminal**), run these commands one block at a time. Copy-paste each block:
+
+```bash
 # Create directory structure
 mkdir -p backend/app/api/v1
 mkdir -p backend/app/core
@@ -24,9 +85,955 @@ mkdir -p frontend/src/app/forgot-password
 mkdir -p frontend/src/app/reset-password
 mkdir -p frontend/src/app/login
 mkdir -p frontend/src/app/register
-mkdir -p frontend/src/app/tools/$$tool$$
+mkdir -p frontend/src/app/tools/\[tool\]
 mkdir -p frontend/src/components/{ui,layout,upload,tools,auth,dashboard,signature,admin,developer}
 mkdir -p frontend/src/lib
 mkdir -p frontend/src/types
 mkdir -p frontend/public
+
 echo "Directories created!"
+```
+
+---
+
+## Step 5 — Create ALL Backend Files (60 min)
+
+Now you need to create every file. In Codespaces, you can:
+- Tap the **New File** icon in the file explorer (or right-click a folder)
+- Or use the terminal: `touch backend/app/__init__.py`
+
+### Here's the approach — create files by pasting code from the phases
+
+The files you need (refer to each phase for the code):
+
+### Root Config Files
+
+**`backend/requirements.txt`** — Create this file:
+
+```txt
+# ─── Core ────────────────────────────────────────────────
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+sqlalchemy[asyncio]==2.0.25
+asyncpg==0.29.0
+alembic==1.13.1
+pydantic==2.6.1
+pydantic-settings==2.1.0
+python-multipart==0.0.9
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.1.2
+
+# ─── PDF Processing ─────────────────────────────────────
+pypdf==4.0.1
+pikepdf==8.13.0
+reportlab==4.1.0
+Pillow==10.2.0
+pdf2image==1.17.0
+PyMuPDF==1.23.21
+
+# ─── Conversions ─────────────────────────────────────────
+python-docx==1.1.0
+openpyxl==3.1.2
+python-pptx==0.6.23
+docx2pdf==0.1.8
+
+# ─── OCR ─────────────────────────────────────────────────
+pytesseract==0.3.13
+
+# ─── Webhooks ────────────────────────────────────────────
+httpx==0.27.0
+
+# ─── Utilities ───────────────────────────────────────────
+aiofiles==23.2.1
+```
+
+**`backend/Dockerfile`** — Create this file:
+
+```dockerfile
+FROM python:3.11-slim
+
+# Install system dependencies for PDF processing + OCR
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libreoffice \
+    poppler-utils \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-deu \
+    tesseract-ocr-fra \
+    tesseract-ocr-spa \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application
+COPY . .
+
+# Create temp directory
+RUN mkdir -p /tmp/pdfsutra
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+**`backend/app/__init__.py`** — empty file
+
+**`backend/app/config.py`** — Create:
+
+```python
+import os
+from functools import lru_cache
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    DATABASE_URL: str = os.getenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/pdfsutra"
+    )
+    # Railway sometimes gives postgres:// instead of postgresql://
+    # We fix it at runtime
+    
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "change-this-in-production-to-a-random-string")
+    JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+
+    STORAGE_DIR: str = os.getenv("STORAGE_DIR", "/tmp/pdfsutra/storage")
+    TEMP_DIR: str = os.getenv("TEMP_DIR", "/tmp/pdfsutra/temp")
+    MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "100"))
+    API_BASE_URL: str = os.getenv("API_BASE_URL", "")
+    DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
+
+    CORS_ORIGINS: list = [
+        "http://localhost:3000",
+        "http://localhost:8000",
+        os.getenv("FRONTEND_URL", ""),
+    ]
+
+    class Config:
+        env_file = ".env"
+
+
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
+```
+
+**`backend/app/database.py`** — Create:
+
+```python
+from sqlalchemy.ext.asyncio import (
+    create_async_engine,
+    async_sessionmaker,
+    AsyncSession,
+)
+from sqlalchemy.orm import DeclarativeBase
+from app.config import get_settings
+
+settings = get_settings()
+
+# Fix Railway's postgres:// to postgresql+asyncpg://
+db_url = settings.DATABASE_URL
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+elif db_url.startswith("postgresql://") and "+asyncpg" not in db_url:
+    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+engine = create_async_engine(db_url, echo=settings.DEBUG, pool_size=5)
+async_session = async_sessionmaker(engine, expire_on_commit=False)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+async def get_db():
+    async with async_session() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+
+
+async def init_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+```
+
+**`backend/app/main.py`** — This is the Phase 14 version (enhanced OpenAPI). Copy from Phase 14.
+
+**`backend/alembic.ini`** — Create:
+
+```ini
+[alembic]
+script_location = alembic
+sqlalchemy.url = driver://user:pass@localhost/dbname
+
+[loggers]
+keys = root,sqlalchemy,alembic
+
+[handlers]
+keys = console
+
+[formatters]
+keys = generic
+
+[logger_root]
+level = WARN
+handlers = console
+
+[logger_sqlalchemy]
+level = WARN
+handlers =
+qualname = sqlalchemy.engine
+
+[logger_alembic]
+level = INFO
+handlers =
+qualname = alembic
+
+[handler_console]
+class = StreamHandler
+args = (sys.stderr,)
+level = NOTSET
+formatter = generic
+
+[formatter_generic]
+format = %(levelname)-5.5s [%(name)s] %(message)s
+```
+
+**`backend/alembic/env.py`** — Create:
+
+```python
+import asyncio
+from logging.config import fileConfig
+from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import async_engine_from_config
+from alembic import context
+import os, sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+from app.database import Base
+from app.config import get_settings
+from app.models import *  # noqa — import all models
+
+config = context.config
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+target_metadata = Base.metadata
+
+settings = get_settings()
+db_url = settings.DATABASE_URL
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+elif db_url.startswith("postgresql://") and "+asyncpg" not in db_url:
+    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+config.set_main_option("sqlalchemy.url", db_url)
+
+
+def run_migrations_offline():
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url, target_metadata=target_metadata,
+        literal_binds=True, dialect_opts={"paramstyle": "named"},
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def do_run_migrations(connection):
+    context.configure(connection=connection, target_metadata=target_metadata)
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_async_migrations():
+    connectable = async_engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+    await connectable.dispose()
+
+
+def run_migrations_online():
+    asyncio.run(run_async_migrations())
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
+```
+
+Now create every Python file from the phases. Use this checklist:
+
+### Backend Files Checklist
+
+```
+backend/app/__init__.py                          (empty)
+backend/app/config.py                            (above)
+backend/app/database.py                          (above)
+backend/app/main.py                              (Phase 14)
+backend/app/core/__init__.py                     (empty)
+backend/app/core/security.py                     (Phase 2)
+backend/app/core/exceptions.py                   (Phase 2)
+backend/app/schemas/__init__.py                  (empty)
+backend/app/schemas/user.py                      (Phase 2)
+backend/app/utils/__init__.py                    (empty)
+backend/app/utils/storage.py                     (Phase 2)
+backend/app/models/__init__.py                   (Phase 14)
+backend/app/models/user.py                      (Phase 8)
+backend/app/models/file.py                      (Phase 2)
+backend/app/models/job.py                       (Phase 11)
+backend/app/models/signature.py                 (Phase 9)
+backend/app/models/feature_flag.py              (Phase 13)
+backend/app/models/audit_log.py                 (Phase 13)
+backend/app/models/webhook.py                   (Phase 14)
+backend/app/api/__init__.py                     (empty)
+backend/app/api/deps.py                         (Phase 2)
+backend/app/api/v1/__init__.py                  (empty)
+backend/app/api/v1/router.py                    (Phase 14)
+backend/app/api/v1/health.py                    (Phase 1)
+backend/app/api/v1/auth.py                      (Phase 8)
+backend/app/api/v1/files.py                     (Phase 2)
+backend/app/api/v1/jobs.py                      (Phase 3)
+backend/app/api/v1/progress.py                  (Phase 3)
+backend/app/api/v1/user.py                      (Phase 8)
+backend/app/api/v1/analytics.py                 (Phase 8)
+backend/app/api/v1/signatures.py                (Phase 9)
+backend/app/api/v1/ocr.py                       (Phase 10)
+backend/app/api/v1/forms.py                     (Phase 11)
+backend/app/api/v1/batch.py                     (Phase 11)
+backend/app/api/v1/admin.py                     (Phase 13)
+backend/app/api/v1/webhooks.py                  (Phase 14)
+backend/app/api/v1/developer.py                 (Phase 14)
+backend/app/services/__init__.py                (empty)
+backend/app/services/job_service.py             (Phase 3)
+backend/app/services/worker_service.py          (Phase 3)
+backend/app/services/ocr_service.py             (Phase 10)
+backend/app/services/signature_service.py       (Phase 9)
+backend/app/services/form_service.py            (Phase 11)
+backend/app/services/admin_service.py           (Phase 13)
+backend/app/services/webhook_service.py         (Phase 14)
+backend/requirements.txt                        (above)
+backend/Dockerfile                              (above)
+backend/alembic.ini                             (above)
+backend/alembic/env.py                          (above)
+backend/alembic/script.py.mako                  (Alembic default)
+```
+
+---
+
+## Step 6 — Create ALL Frontend Files (90 min)
+
+**`frontend/package.json`** — Create:
+
+```json
+{
+  "name": "pdfsutra",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "14.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.0.1",
+    "postcss": "^8",
+    "tailwindcss": "^3.3.0",
+    "typescript": "^5"
+  }
+}
+```
+
+**`frontend/Dockerfile`** — Create:
+
+```dockerfile
+FROM node:18-alpine AS base
+
+# Install dependencies only when needed
+FROM base AS deps
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# Build the app
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Set build-time env
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
+RUN npm run build
+
+# Production image
+FROM base AS runner
+WORKDIR /app
+
+ENV NODE_ENV production
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+USER nextjs
+
+EXPOSE 3000
+ENV PORT 3000
+
+CMD ["node", "server.js"]
+```
+
+**`frontend/next.config.js`** — Create:
+
+```javascript
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  output: "standalone",
+  images: {
+    domains: ["localhost"],
+  },
+};
+
+module.exports = nextConfig;
+```
+
+**`frontend/tsconfig.json`** — Create:
+
+```json
+{
+  "compilerOptions": {
+    "target": "es5",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
+```
+
+**`frontend/tailwind.config.ts`** — Create:
+
+```typescript
+import type { Config } from "tailwindcss";
+
+const config: Config = {
+  content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
+        display: ["var(--font-playfair)", "Georgia", "serif"],
+      },
+      colors: {
+        brand: {
+          50: "#f0fdf4",
+          100: "#dcfce7",
+          200: "#bbf7d0",
+          300: "#86efac",
+          400: "#4ade80",
+          500: "#22c55e",
+          600: "#16a34a",
+          700: "#15803d",
+          800: "#166534",
+          900: "#14532d",
+        },
+        surface: {
+          50: "#fafaf9",
+          100: "#f5f5f4",
+          200: "#e7e5e4",
+          300: "#d6d3d1",
+          400: "#a8a29e",
+          500: "#78716c",
+          600: "#57534e",
+          700: "#44403c",
+          800: "#292524",
+          900: "#1c1917",
+        },
+      },
+    },
+  },
+  plugins: [],
+};
+
+export default config;
+```
+
+**`frontend/postcss.config.js`** — Create:
+
+```javascript
+module.exports = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+};
+```
+
+**`frontend/src/types/index.ts`** — Create (from earlier phases):
+
+```typescript
+export interface User {
+  id: string;
+  email: string;
+  full_name: string | null;
+  plan: string;
+  is_active: boolean;
+  is_verified: boolean;
+  is_superuser: boolean;
+  monthly_operations: number;
+  monthly_limit: number;
+  created_at: string;
+}
+
+export interface FileRecord {
+  id: string;
+  filename: string;
+  original_filename: string;
+  mime_type: string;
+  size_bytes: number;
+  page_count: number | null;
+  checksum_sha256: string;
+  created_at: string;
+}
+
+export interface Job {
+  id: string;
+  job_type: string;
+  status: string;
+  progress_pct: number;
+  parameters: Record<string, any> | null;
+  result_file_ids: string[];
+  error_message: string | null;
+  batch_id: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface PaginatedResponse<T> {
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+  [key: string]: any;
+}
+```
+
+### Now create every frontend file from the phases:
+
+```
+frontend/src/app/globals.css                          (Phase 12)
+frontend/src/app/layout.tsx                           (Phase 12)
+frontend/src/app/page.tsx                             (Phase 12)
+frontend/src/app/providers.tsx                        (Phase 8)
+frontend/src/lib/api.ts                               (Phase 14)
+frontend/src/lib/utils.ts                             (Phase 1)
+frontend/src/lib/auth.ts                              (Phase 2)
+frontend/src/lib/hooks.ts                             (Phase 8)
+frontend/src/lib/tools-config.ts                      (Phases 3-10)
+frontend/src/components/ui/button.tsx                 (Phase 1)
+frontend/src/components/ui/card.tsx                   (Phase 1)
+frontend/src/components/ui/input.tsx                  (Phase 1)
+frontend/src/components/ui/badge.tsx                  (Phase 1)
+frontend/src/components/ui/progress.tsx               (Phase 1)
+frontend/src/components/ui/skeleton.tsx               (Phase 1)
+frontend/src/components/ui/select.tsx                 (Phase 8)
+frontend/src/components/ui/toast.tsx                  (Phase 8)
+frontend/src/components/layout/header.tsx             (Phases 2, 13, 14)
+frontend/src/components/auth/auth-guard.tsx           (Phase 2)
+frontend/src/components/upload/dropzone.tsx           (Phase 2)
+frontend/src/components/tools/job-progress.tsx        (Phase 3)
+frontend/src/components/dashboard/activity-timeline.tsx (Phase 8)
+frontend/src/components/dashboard/usage-chart.tsx     (Phase 8)
+frontend/src/components/signature/signature-pad.tsx   (Phase 9)
+frontend/src/components/signature/signature-gallery.tsx (Phase 9)
+frontend/src/components/admin/admin-guard.tsx         (Phase 13)
+frontend/src/components/admin/stat-card.tsx           (Phase 13)
+frontend/src/components/admin/data-table.tsx          (Phase 13)
+frontend/src/components/developer/endpoint-card.tsx   (Phase 14)
+frontend/src/app/login/page.tsx                       (Phase 2)
+frontend/src/app/register/page.tsx                    (Phase 2)
+frontend/src/app/forgot-password/page.tsx             (Phase 8)
+frontend/src/app/reset-password/page.tsx              (Phase 8)
+frontend/src/app/tools/page.tsx                       (Phases 3, 10, 11)
+frontend/src/app/tools/[tool]/page.tsx                (Phases 3, 9)
+frontend/src/app/tools/sign/page.tsx                  (Phase 9)
+frontend/src/app/tools/ocr/page.tsx                   (Phase 10)
+frontend/src/app/tools/compare/page.tsx               (Phase 10)
+frontend/src/app/tools/suggest/page.tsx               (Phase 10)
+frontend/src/app/tools/fill-form/page.tsx             (Phase 11)
+frontend/src/app/tools/batch/page.tsx                 (Phase 11)
+frontend/src/app/dashboard/page.tsx                   (Phases 6, 8)
+frontend/src/app/dashboard/layout.tsx                 (Phase 6)
+frontend/src/app/dashboard/files/page.tsx             (Phases 6, 8)
+frontend/src/app/dashboard/jobs/page.tsx              (Phases 6, 8)
+frontend/src/app/dashboard/webhooks/page.tsx          (Phase 14)
+frontend/src/app/settings/layout.tsx                  (Phase 8)
+frontend/src/app/settings/page.tsx                    (Phase 8)
+frontend/src/app/settings/security/page.tsx           (Phase 8)
+frontend/src/app/settings/danger/page.tsx             (Phase 8)
+frontend/src/app/developer/page.tsx                   (Phase 14)
+frontend/src/app/admin/layout.tsx                     (Phase 13)
+frontend/src/app/admin/page.tsx                       (Phase 13)
+frontend/src/app/admin/users/page.tsx                 (Phase 13)
+frontend/src/app/admin/jobs/page.tsx                  (Phase 13)
+frontend/src/app/admin/flags/page.tsx                 (Phase 13)
+frontend/src/app/admin/system/page.tsx                (Phase 13)
+```
+
+---
+
+## Step 7 — Railway Start Script
+
+**`backend/start.sh`** — Create:
+
+```bash
+#!/bin/bash
+set -e
+
+echo "Running database migrations..."
+alembic upgrade head
+
+echo "Starting server..."
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+Make it executable in the terminal:
+```bash
+chmod +x backend/start.sh
+```
+
+Update `backend/Dockerfile` CMD line:
+
+```dockerfile
+CMD ["bash", "start.sh"]
+```
+
+---
+
+## Step 8 — Commit & Push Everything
+
+In the Codespaces terminal:
+
+```bash
+cd /workspaces/pdfsutra
+
+git add -A
+git commit -m "Complete PDFSutra application - Phases 1-14"
+git push origin main
+```
+
+---
+
+## Step 9 — Deploy on Railway (15 min)
+
+### 9a. Create Railway Project
+
+1. Open `railway.com` on your phone
+2. Tap **New Project**
+3. Tap **Empty Project**
+
+### 9b. Add PostgreSQL
+
+1. In your new project, tap **+ New**
+2. Tap **Database**
+3. Tap **PostgreSQL**
+4. Railway provisions a PostgreSQL instance
+5. Tap on the PostgreSQL service → **Variables** tab
+6. Note the `DATABASE_URL` — you'll need it
+
+### 9c. Add Backend Service
+
+1. Tap **+ New** → **GitHub Repo**
+2. Select your `pdfsutra` repo
+3. Railway asks for the **Root Directory** — set it to:
+   ```
+   backend
+   ```
+4. Railway detects the Dockerfile and builds automatically
+
+**Add environment variables** — tap **Variables** tab:
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (reference the Postgres service) |
+| `SECRET_KEY` | `your-random-secret-key-at-least-32-chars-long-abc123` |
+| `DEBUG` | `false` |
+| `STORAGE_DIR` | `/tmp/pdfsutra/storage` |
+| `TEMP_DIR` | `/tmp/pdfsutra/temp` |
+| `MAX_FILE_SIZE_MB` | `100` |
+| `FRONTEND_URL` | (leave empty for now, fill in after frontend deploys) |
+
+### 9d. Add Frontend Service
+
+1. Tap **+ New** → **GitHub Repo**
+2. Select your `pdfsutra` repo again
+3. Set **Root Directory** to:
+   ```
+   frontend
+   ```
+4. Railway detects the Dockerfile
+
+**Add environment variables:**
+
+| Variable | Value |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | (your backend URL — get it from the backend service's Settings → Networking) |
+
+### 9e. Get Your URLs
+
+1. Go to **backend service** → **Settings** → **Networking**
+2. Tap **Generate Domain**
+3. You get something like: `https://pdfsutra-backend-production.up.railway.app`
+4. Copy this URL
+
+5. Go to **frontend service** → **Settings** → **Networking**
+6. Tap **Generate Domain**
+7. You get something like: `https://pdfsutra-frontend-production.up.railway.app`
+
+### 9f. Connect Them
+
+1. Go to **frontend service** → **Variables**
+2. Set `NEXT_PUBLIC_API_URL` = `https://pdfsutra-backend-production.up.railway.app`
+3. Frontend will redeploy automatically
+
+4. Go to **backend service** → **Variables**
+5. Set `FRONTEND_URL` = `https://pdfsutra-frontend-production.up.railway.app`
+6. Backend will redeploy automatically
+
+---
+
+## Step 10 — Run Database Migration
+
+The backend `start.sh` runs `alembic upgrade head` automatically on deploy. But for the first migration, you need to generate it.
+
+### Option A: Railway CLI (from phone terminal via Termux)
+
+Install Termux from Play Store, then:
+
+```bash
+pkg install nodejs
+npm install -g @railway/cli
+railway login
+railway link  # Select your project
+railway run alembic revision --autogenerate -m "initial"
+railway run alembic upgrade head
+```
+
+### Option B: Use Railway's Shell (easier)
+
+1. Go to your **backend service** in Railway
+2. Tap the **Deployments** tab
+3. Wait for the build to complete
+4. Go to the latest deployment
+5. Railway has a **Shell/Logs** feature — or you can use the **Settings** → **Custom Start Command** temporarily
+
+### Option C: Create the migration locally in Codespaces
+
+Go back to your Codespace:
+
+```bash
+cd /workspaces/pdfsutra/backend
+
+# Temporarily set the Railway DATABASE_URL
+export DATABASE_URL="postgresql+asyncpg://postgres:PASSWORD@HOST:PORT/railway"
+
+# You can find these in Railway → PostgreSQL → Variables
+# Replace HOST, PORT, PASSWORD with actual values
+
+alembic revision --autogenerate -m "initial_schema"
+alembic upgrade head
+```
+
+Commit the migration file and push:
+
+```bash
+git add -A
+git commit -m "Add initial database migration"
+git push origin main
+```
+
+The backend will redeploy and run `alembic upgrade head` automatically.
+
+---
+
+## Step 11 — Make Yourself Admin
+
+Once the database has tables, run this in Railway's shell or from Codespaces:
+
+```sql
+UPDATE users SET is_superuser = true WHERE email = 'your@email.com';
+```
+
+Or register on the live site first, then run the SQL via Railway's PostgreSQL dashboard:
+1. Go to PostgreSQL service in Railway
+2. Tap **Data** tab
+3. You can run SQL queries directly
+
+---
+
+## Step 12 — Visit Your Live App
+
+Open in your phone browser:
+
+```
+https://pdfsutra-frontend-production.up.railway.app
+```
+
+You should see:
+- Landing page with animations and all sections
+- Register an account
+- Login
+- Upload a PDF and try compress, split, merge
+- Visit `/admin` for the admin panel
+- Visit `/developer` for the API portal
+- Visit `/tools` for all 24 tools
+
+---
+
+## Railway Project Structure in Dashboard
+
+```
+Railway Project: pdfsutra
+│
+├── Service: PostgreSQL
+│   ├── Status: Running
+│   └── Variables: DATABASE_URL (auto-managed)
+│
+├── Service: Backend (FastAPI)
+│   ├── Root Directory: backend
+│   ├── Dockerfile: backend/Dockerfile
+│   ├── Status: Running
+│   ├── URL: https://pdfsutra-backend-xxx.up.railway.app
+│   └── Variables:
+│       ├── DATABASE_URL = ${{Postgres.DATABASE_URL}}
+│       ├── SECRET_KEY = your-secret-key
+│       ├── FRONTEND_URL = https://pdfsutra-frontend-xxx.up.railway.app
+│       └── ...
+│
+└── Service: Frontend (Next.js)
+    ├── Root Directory: frontend
+    ├── Dockerfile: frontend/Dockerfile
+    ├── Status: Running
+    ├── URL: https://pdfsutra-frontend-xxx.up.railway.app
+    └── Variables:
+        └── NEXT_PUBLIC_API_URL = https://pdfsutra-backend-xxx.up.railway.app
+```
+
+---
+
+## Troubleshooting
+
+### Build fails on backend
+- Check the **Build Logs** in Railway
+- Common issue: missing system packages — the Dockerfile handles this
+- If Tesseract fails: remove OCR deps temporarily, deploy, add back
+
+### Build fails on frontend
+- Make sure `next.config.js` has `output: "standalone"`
+- Check that all import paths are correct
+- The Dockerfile handles the multi-stage build
+
+### Database connection fails
+- Make sure `DATABASE_URL` references the Postgres service correctly
+- Railway uses: `${{Postgres.DATABASE_URL}}` to reference other services
+- The `config.py` handles `postgres://` to `postgresql+asyncpg://` conversion
+
+### CORS errors
+- Make sure `FRONTEND_URL` backend variable matches the actual frontend URL
+- Make sure `NEXT_PUBLIC_API_URL` frontend variable matches the actual backend URL
+
+### App is slow to start
+- Railway free tier services sleep after 30 min of inactivity
+- First request takes ~15 seconds to wake up
+- Keep-alive services like UptimeRobot can ping your health endpoint
+
+### Memory/size limits
+- Railway free tier: 1GB RAM, 1GB disk per service
+- The backend Dockerfile with LibreOffice + Tesseract is ~1.5GB
+- If build fails due to size, remove LibreOffice from Dockerfile (reduces conversions)
+
+---
+
+## Cost Estimate
+
+| Resource | Railway Free | With Usage |
+|---|---|---|
+| PostgreSQL | 1GB storage free | $0.01/hr after |
+| Backend | 500 hours/month free | $0.000463/min after |
+| Frontend | 500 hours/month free | $0.000463/min after |
+| **Total** | **$0 for light usage** | **~$5-10/month for moderate** |
+
+The $5/month credit covers a small-to-medium app running 24/7.
+
+---
+
+## Quick Checklist
+
+```
+[  ] GitHub account created
+[  ] Railway account created (via GitHub login)
+[  ] Codespace opened
+[  ] All backend files created (copy from phases)
+[  ] All frontend files created (copy from phases)
+[  ] backend/Dockerfile created
+[  ] frontend/Dockerfile created
+[  ] Code committed and pushed to GitHub
+[  ] Railway project created
+[  ] PostgreSQL service added
+[  ] Backend service connected to GitHub repo (root: backend)
+[  ] Frontend service connected to GitHub repo (root: frontend)
+[  ] Environment variables set on both services
+[  ] Database migration run (alembic upgrade head)
+[  ] Frontend URL set in backend FRONTEND_URL variable
+[  ] Backend URL set in frontend NEXT_PUBLIC_API_URL variable
+[  ] Visit live URL and test
+[  ] Register account and make yourself admin
+```
+
+Once deployed, every `git push` to main auto-redeploys both services.
