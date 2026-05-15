@@ -1,0 +1,32 @@
+Step 4 — Create the File Structure (30 min)
+
+In the Codespaces terminal (tap Terminal menu → New Terminal), run these commands one block at a time. Copy-paste each block:
+
+
+bash
+bash
+# Create directory structure
+mkdir -p backend/app/api/v1
+mkdir -p backend/app/core
+mkdir -p backend/app/models
+mkdir -p backend/app/schemas
+mkdir -p backend/app/services
+mkdir -p backend/app/utils
+mkdir -p backend/alembic/versions
+mkdir -p frontend/src/app/api
+mkdir -p frontend/src/app/tools/{sign,ocr,compare,suggest,fill-form,batch}
+mkdir -p frontend/src/app/auth
+mkdir -p frontend/src/app/dashboard/{files,jobs,webhooks}
+mkdir -p frontend/src/app/settings/{security,danger}
+mkdir -p frontend/src/app/admin/{users,jobs,flags,system}
+mkdir -p frontend/src/app/developer/playground
+mkdir -p frontend/src/app/forgot-password
+mkdir -p frontend/src/app/reset-password
+mkdir -p frontend/src/app/login
+mkdir -p frontend/src/app/register
+mkdir -p frontend/src/app/tools/$$tool$$
+mkdir -p frontend/src/components/{ui,layout,upload,tools,auth,dashboard,signature,admin,developer}
+mkdir -p frontend/src/lib
+mkdir -p frontend/src/types
+mkdir -p frontend/public
+echo "Directories created!"
